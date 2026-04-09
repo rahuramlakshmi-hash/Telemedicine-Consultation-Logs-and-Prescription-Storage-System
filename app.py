@@ -4,6 +4,13 @@ import os
 
 app = Flask(__name__)
 
+TABLE_CANDIDATES = {
+    "patient": ["patient", "Patient"],
+    "doctor": ["doctor", "Doctor"],
+    "consultation": ["consultation", "Consultation"],
+    "prescription": ["prescription", "Prescription"],
+}
+
 
 def get_db_config():
     return {
@@ -33,6 +40,29 @@ def get_cursor():
     return g.cursor
 
 
+def get_table_name(logical_name):
+    cache = g.setdefault("table_name_cache", {})
+    if logical_name in cache:
+        return cache[logical_name]
+
+    cursor = get_cursor()
+    cursor.execute("SHOW TABLES")
+    available_tables = {row[0] for row in cursor.fetchall()}
+    available_by_lower = {name.lower(): name for name in available_tables}
+
+    for candidate in TABLE_CANDIDATES.get(logical_name, [logical_name]):
+        if candidate in available_tables:
+            cache[logical_name] = candidate
+            return candidate
+        if candidate.lower() in available_by_lower:
+            cache[logical_name] = available_by_lower[candidate.lower()]
+            return cache[logical_name]
+
+    raise RuntimeError(
+        f"Missing expected table for '{logical_name}'. Found tables: {sorted(available_tables)}"
+    )
+
+
 @app.teardown_appcontext
 def close_db(error):
     cursor = g.pop("cursor", None)
@@ -46,7 +76,8 @@ def close_db(error):
 
 def fetch_count(table_name):
     cursor = get_cursor()
-    cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+    resolved_table = get_table_name(table_name)
+    cursor.execute(f"SELECT COUNT(*) FROM `{resolved_table}`")
     return cursor.fetchone()[0]
 
 
@@ -75,9 +106,10 @@ def patient():
 @app.route("/patient_list")
 def patient_list():
     cursor = get_cursor()
+    patient_table = get_table_name("patient")
     cursor.execute(
         "SELECT patient_id, name, dob, phone, email, address "
-        "FROM patient ORDER BY patient_id DESC"
+        f"FROM `{patient_table}` ORDER BY patient_id DESC"
     )
     patients = cursor.fetchall()
     return render_template("patient_list.html", patients=patients)
@@ -86,7 +118,8 @@ def patient_list():
 @app.route("/delete_patient/<int:patient_id>")
 def delete_patient(patient_id):
     cursor = get_cursor()
-    cursor.execute("DELETE FROM patient WHERE patient_id = %s", (patient_id,))
+    patient_table = get_table_name("patient")
+    cursor.execute(f"DELETE FROM `{patient_table}` WHERE patient_id = %s", (patient_id,))
     get_db().commit()
     return redirect("/patient_list")
 
@@ -99,9 +132,10 @@ def doctor():
 @app.route("/doctor_list")
 def doctor_list():
     cursor = get_cursor()
+    doctor_table = get_table_name("doctor")
     cursor.execute(
         "SELECT doctor_id, name, specialization, phone, email, department "
-        "FROM doctor ORDER BY doctor_id DESC"
+        f"FROM `{doctor_table}` ORDER BY doctor_id DESC"
     )
     doctors = cursor.fetchall()
     return render_template("doctor_list.html", doctors=doctors)
@@ -110,7 +144,8 @@ def doctor_list():
 @app.route("/delete_doctor/<int:doctor_id>")
 def delete_doctor(doctor_id):
     cursor = get_cursor()
-    cursor.execute("DELETE FROM doctor WHERE doctor_id = %s", (doctor_id,))
+    doctor_table = get_table_name("doctor")
+    cursor.execute(f"DELETE FROM `{doctor_table}` WHERE doctor_id = %s", (doctor_id,))
     get_db().commit()
     return redirect("/doctor_list")
 
@@ -118,9 +153,11 @@ def delete_doctor(doctor_id):
 @app.route("/consultation")
 def consultation():
     cursor = get_cursor()
-    cursor.execute("SELECT patient_id, name FROM patient ORDER BY name")
+    patient_table = get_table_name("patient")
+    doctor_table = get_table_name("doctor")
+    cursor.execute(f"SELECT patient_id, name FROM `{patient_table}` ORDER BY name")
     patients = cursor.fetchall()
-    cursor.execute("SELECT doctor_id, name FROM doctor ORDER BY name")
+    cursor.execute(f"SELECT doctor_id, name FROM `{doctor_table}` ORDER BY name")
     doctors = cursor.fetchall()
     return render_template("consultation.html", patients=patients, doctors=doctors)
 
@@ -128,11 +165,14 @@ def consultation():
 @app.route("/prescription")
 def prescription():
     cursor = get_cursor()
+    consultation_table = get_table_name("consultation")
+    patient_table = get_table_name("patient")
+    doctor_table = get_table_name("doctor")
     cursor.execute(
         "SELECT c.consultation_id, p.name, d.name, c.date, c.time "
-        "FROM consultation c "
-        "JOIN patient p ON c.patient_id = p.patient_id "
-        "JOIN doctor d ON c.doctor_id = d.doctor_id "
+        f"FROM `{consultation_table}` c "
+        f"JOIN `{patient_table}` p ON c.patient_id = p.patient_id "
+        f"JOIN `{doctor_table}` d ON c.doctor_id = d.doctor_id "
         "ORDER BY c.consultation_id DESC"
     )
     consultations = cursor.fetchall()
@@ -149,8 +189,10 @@ def save_consultation():
     diagnosis = request.form["diagnosis"]
 
     cursor = get_cursor()
+    consultation_table = get_table_name("consultation")
     cursor.execute(
-        "INSERT INTO consultation (patient_id, doctor_id, date, time, symptoms, diagnosis) "
+        f"INSERT INTO `{consultation_table}` "
+        "(patient_id, doctor_id, date, time, symptoms, diagnosis) "
         "VALUES (%s, %s, %s, %s, %s, %s)",
         (patient_id, doctor_id, date, time, symptoms, diagnosis),
     )
@@ -167,8 +209,10 @@ def save_prescription():
     notes = request.form["notes"]
 
     cursor = get_cursor()
+    prescription_table = get_table_name("prescription")
     cursor.execute(
-        "INSERT INTO prescription (consultation_id, medicine_name, dosage, duration, notes) "
+        f"INSERT INTO `{prescription_table}` "
+        "(consultation_id, medicine_name, dosage, duration, notes) "
         "VALUES (%s, %s, %s, %s, %s)",
         (consultation_id, medicine_name, dosage, duration, notes),
     )
@@ -179,21 +223,25 @@ def save_prescription():
 @app.route("/reports")
 def reports():
     cursor = get_cursor()
+    consultation_table = get_table_name("consultation")
+    patient_table = get_table_name("patient")
+    doctor_table = get_table_name("doctor")
+    prescription_table = get_table_name("prescription")
     cursor.execute(
         "SELECT c.consultation_id, p.name, d.name, c.date, c.time, c.symptoms, c.diagnosis "
-        "FROM consultation c "
-        "JOIN patient p ON c.patient_id = p.patient_id "
-        "JOIN doctor d ON c.doctor_id = d.doctor_id "
+        f"FROM `{consultation_table}` c "
+        f"JOIN `{patient_table}` p ON c.patient_id = p.patient_id "
+        f"JOIN `{doctor_table}` d ON c.doctor_id = d.doctor_id "
         "ORDER BY c.consultation_id DESC"
     )
     consultations = cursor.fetchall()
     cursor.execute(
         "SELECT r.prescription_id, r.consultation_id, p.name, d.name, r.medicine_name, "
         "r.dosage, r.duration, r.notes "
-        "FROM prescription r "
-        "JOIN consultation c ON r.consultation_id = c.consultation_id "
-        "JOIN patient p ON c.patient_id = p.patient_id "
-        "JOIN doctor d ON c.doctor_id = d.doctor_id "
+        f"FROM `{prescription_table}` r "
+        f"JOIN `{consultation_table}` c ON r.consultation_id = c.consultation_id "
+        f"JOIN `{patient_table}` p ON c.patient_id = p.patient_id "
+        f"JOIN `{doctor_table}` d ON c.doctor_id = d.doctor_id "
         "ORDER BY r.prescription_id DESC"
     )
     prescriptions = cursor.fetchall()
@@ -207,10 +255,12 @@ def reports():
 @app.route("/doctor_dashboard")
 def doctor_dashboard():
     cursor = get_cursor()
+    consultation_table = get_table_name("consultation")
+    patient_table = get_table_name("patient")
     cursor.execute(
         "SELECT c.consultation_id, p.name, c.date, c.time, c.diagnosis "
-        "FROM consultation c "
-        "JOIN patient p ON c.patient_id = p.patient_id "
+        f"FROM `{consultation_table}` c "
+        f"JOIN `{patient_table}` p ON c.patient_id = p.patient_id "
         "ORDER BY c.consultation_id DESC"
     )
     consultations = cursor.fetchall()
@@ -271,8 +321,10 @@ def save_patient():
     address = request.form["address"]
 
     cursor = get_cursor()
+    patient_table = get_table_name("patient")
     cursor.execute(
-        "INSERT INTO patient (name, dob, phone, email, address) VALUES (%s, %s, %s, %s, %s)",
+        f"INSERT INTO `{patient_table}` (name, dob, phone, email, address) "
+        "VALUES (%s, %s, %s, %s, %s)",
         (name, dob, phone, email, address),
     )
     get_db().commit()
@@ -288,8 +340,9 @@ def save_doctor():
     department = request.form["department"]
 
     cursor = get_cursor()
+    doctor_table = get_table_name("doctor")
     cursor.execute(
-        "INSERT INTO doctor (name, specialization, phone, email, department) "
+        f"INSERT INTO `{doctor_table}` (name, specialization, phone, email, department) "
         "VALUES (%s, %s, %s, %s, %s)",
         (name, specialization, phone, email, department),
     )
