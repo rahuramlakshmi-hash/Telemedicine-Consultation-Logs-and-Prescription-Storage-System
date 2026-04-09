@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Doctor Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="sidebar">
+    <h3>Doctor Panel</h3>
+    <a href="/consultation">Add Consultation</a>
+    <a href="/reports">View Reports</a>
+    <a href="/">Logout</a>
+</div>
+
+<div class="main">
+    <div class="topbar">
+      <h2>My Consultations</h2>
+      <a href="/consultation" class="btn-secondary">Add Consultation</a>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <tr>
+            <th>Patient</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Diagnosis</th>
+        </tr>
+        {% for consult in consultations %}
+        <tr>
+            <td>{{ consult[1] }}</td>
+            <td>{{ consult[2] }}</td>
+            <td>{{ consult[3] }}</td>
+            <td>{{ consult[4] }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4">No consultations available.</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+</body>
+</html>

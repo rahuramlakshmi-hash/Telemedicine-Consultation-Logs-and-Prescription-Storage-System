@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Patient Records</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="page">
+    <div class="topbar">
+        <h2>Patient Records</h2>
+        <div>
+            <a href="/patient">Add Patient</a>
+            <a href="/admin">Admin</a>
+        </div>
+    </div>
+    {% if patients %}
+    <div class="table-wrapper">
+      <table>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>DOB</th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th>Address</th>
+            <th>Actions</th>
+        </tr>
+        {% for patient in patients %}
+        <tr>
+            <td>{{ patient[0] }}</td>
+            <td>{{ patient[1] }}</td>
+            <td>{{ patient[2] }}</td>
+            <td>{{ patient[3] }}</td>
+            <td>{{ patient[4] }}</td>
+            <td>{{ patient[5] }}</td>
+            <td class="actions">
+                <a href="/delete_patient/{{ patient[0] }}" class="delete" onclick="return confirm('Delete this patient?')">Delete</a>
+            </td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% else %}
+    <div class="empty">No patient records found. Add a new patient to get started.</div>
+    {% endif %}
+</div>
+</body>
+</html>

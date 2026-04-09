@@ -1,0 +1,46 @@
+ <!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="sidebar">
+    <h3>Admin Panel</h3>
+    <a href="/admin">Dashboard</a>
+    <a href="/doctor_list">Manage Doctors</a>
+    <a href="/patient_list">Manage Patients</a>
+    <a href="/reports">Reports</a>
+    <a href="/">Logout</a>
+</div>
+
+<div class="main">
+    <div class="banner">
+        <h1>Admin Dashboard</h1>
+        <p>Manage providers, patients, consultations, and reports from one elegant workspace.</p>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="card">
+            <p class="card-title">Total Doctors</p>
+            <p class="card-value">{{ doctor_count }}</p>
+        </div>
+        <div class="card">
+            <p class="card-title">Total Patients</p>
+            <p class="card-value">{{ patient_count }}</p>
+        </div>
+        <div class="card">
+            <p class="card-title">Consultations</p>
+            <p class="card-value">{{ consultation_count }}</p>
+        </div>
+        <div class="card">
+            <p class="card-title">Prescriptions</p>
+            <p class="card-value">{{ prescription_count }}</p>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

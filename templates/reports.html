@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reports</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="page">
+    <div class="topbar">
+        <h2>Consultation Reports</h2>
+        <a href="/admin" class="btn-secondary">Admin</a>
+    </div>
+    {% if consultations %}
+    <div class="table-wrapper">
+      <table>
+        <tr>
+            <th>ID</th>
+            <th>Patient</th>
+            <th>Doctor</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Diagnosis</th>
+        </tr>
+        {% for consult in consultations %}
+        <tr>
+            <td>{{ consult[0] }}</td>
+            <td>{{ consult[1] }}</td>
+            <td>{{ consult[2] }}</td>
+            <td>{{ consult[3] }}</td>
+            <td>{{ consult[4] }}</td>
+            <td>{{ consult[6] }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">No consultation reports available.</div>
+    {% endif %}
+
+    <h2>Prescription Reports</h2>
+    {% if prescriptions %}
+    <div class="table-wrapper">
+      <table>
+        <tr>
+            <th>ID</th>
+            <th>Consultation</th>
+            <th>Patient</th>
+            <th>Doctor</th>
+            <th>Medicine</th>
+            <th>Dosage</th>
+            <th>Duration</th>
+            <th>Notes</th>
+        </tr>
+        {% for rx in prescriptions %}
+        <tr>
+            <td>{{ rx[0] }}</td>
+            <td>{{ rx[1] }}</td>
+            <td>{{ rx[2] }}</td>
+            <td>{{ rx[3] }}</td>
+            <td>{{ rx[4] }}</td>
+            <td>{{ rx[5] }}</td>
+            <td>{{ rx[6] }}</td>
+            <td>{{ rx[7] }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% else %}
+    <p>No prescription reports available.</p>
+    {% endif %}
+</div>
+
+</body>
+</html>

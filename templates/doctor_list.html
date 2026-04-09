@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Doctor Records</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="page">
+    <div class="topbar">
+        <h2>Doctor Records</h2>
+        <div>
+            <a href="/doctor">Add Doctor</a>
+            <a href="/admin">Admin</a>
+        </div>
+    </div>
+    {% if doctors %}
+    <div class="table-wrapper">
+      <table>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Specialization</th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th>Department</th>
+            <th>Actions</th>
+        </tr>
+        {% for doctor in doctors %}
+        <tr>
+            <td>{{ doctor[0] }}</td>
+            <td>{{ doctor[1] }}</td>
+            <td>{{ doctor[2] }}</td>
+            <td>{{ doctor[3] }}</td>
+            <td>{{ doctor[4] }}</td>
+            <td>{{ doctor[5] }}</td>
+            <td class="actions">
+                <a href="/delete_doctor/{{ doctor[0] }}" class="delete" onclick="return confirm('Delete this doctor?')">Delete</a>
+            </td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% else %}
+    <div class="empty">No doctor records found. Add a new doctor to get started.</div>
+    {% endif %}
+</div>
+</body>
+</html>

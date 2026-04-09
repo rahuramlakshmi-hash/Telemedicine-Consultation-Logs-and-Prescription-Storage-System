@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Consultation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <h2>Add Consultation</h2>
+    <div>
+      <a href="/doctor_dashboard" class="btn-secondary">Dashboard</a>
+      <a href="/reports" class="btn-secondary">Reports</a>
+    </div>
+  </div>
+
+  <div class="form-box">
+    <h2>Add Consultation</h2>
+
+    <form action="/save_consultation" method="post">
+        <select name="patient_id" required>
+            <option value="">Select Patient</option>
+            {% for patient in patients %}
+            <option value="{{ patient[0] }}">{{ patient[1] }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="doctor_id" required>
+            <option value="">Select Doctor</option>
+            {% for doctor in doctors %}
+            <option value="{{ doctor[0] }}">{{ doctor[1] }}</option>
+            {% endfor %}
+        </select>
+
+        <input type="date" name="date" required>
+        <input type="time" name="time" required>
+
+        <textarea name="symptoms" placeholder="Symptoms" required></textarea>
+        <textarea name="diagnosis" placeholder="Diagnosis" required></textarea>
+
+        <button type="submit">Save Consultation</button>
+    </form>
+  </div>
+</div>
+
+</body>
+</html>

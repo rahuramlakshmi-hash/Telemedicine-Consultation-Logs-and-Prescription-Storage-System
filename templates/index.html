@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Telemedicine System - Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="login-screen">
+
+<div class="form-card">
+    <h1>Telemedicine Portal</h1>
+    <p>Choose your role to continue.</p>
+
+    <div class="form-box">
+        <h2>Login</h2>
+        <form>
+            <div class="form-field">
+                <label for="role">Login as</label>
+                <select id="role">
+                    <option value="admin">Admin</option>
+                    <option value="doctor">Doctor</option>
+                </select>
+            </div>
+            <button type="button" onclick="login()">Continue</button>
+        </form>
+    </div>
+</div>
+
+<script>
+function login() {
+    var role = document.getElementById("role").value;
+    if(role === "admin") {
+        window.location.href = "/admin";
+    } else {
+        window.location.href = "/doctor_dashboard";
+    }
+}
+</script>
+
+</body>
+</html>

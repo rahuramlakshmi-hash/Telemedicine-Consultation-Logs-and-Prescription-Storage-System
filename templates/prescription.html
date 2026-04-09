@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Prescription</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <h2>Add Prescription</h2>
+    <div>
+      <a href="/doctor_dashboard" class="btn-secondary">Dashboard</a>
+      <a href="/reports" class="btn-secondary">Reports</a>
+    </div>
+  </div>
+
+  <div class="form-box">
+    <h2>Add Prescription</h2>
+
+    <form action="/save_prescription" method="post">
+        <select name="consultation_id" required>
+            <option value="">Select Consultation</option>
+            {% for consult in consultations %}
+            <option value="{{ consult[0] }}">#{{ consult[0] }} - {{ consult[1] }} / {{ consult[2] }} / {{ consult[3] }}</option>
+            {% endfor %}
+        </select>
+
+        <input type="text" name="medicine_name" placeholder="Medicine Name" required>
+        <input type="text" name="dosage" placeholder="Dosage (e.g., 1 tablet twice daily)" required>
+        <input type="text" name="duration" placeholder="Duration (e.g., 5 days)" required>
+        <textarea name="notes" placeholder="Additional Notes"></textarea>
+
+        <button type="submit">Save Prescription</button>
+    </form>
+  </div>
+</div>
+
+</body>
+</html>

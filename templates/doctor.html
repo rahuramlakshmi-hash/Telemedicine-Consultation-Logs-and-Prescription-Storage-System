@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manage Doctors</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <h2>Add Doctor</h2>
+    <div>
+      <a href="/doctor_list" class="btn-secondary">Doctor Records</a>
+      <a href="/admin" class="btn-secondary">Admin</a>
+    </div>
+  </div>
+
+  <div class="form-box">
+    <h2>Add Doctor</h2>
+
+    <form action="/save_doctor" method="post">
+        <input type="text" name="name" placeholder="Doctor Name" required>
+        <input type="text" name="specialization" placeholder="Specialization" required>
+        <input type="text" name="phone" placeholder="Phone" required>
+        <input type="email" name="email" placeholder="Email" required>
+        <input type="text" name="department" placeholder="Department" required>
+        <button type="submit">Save Doctor</button>
+    </form>
+  </div>
+</div>
+
+</body>
+</html>
