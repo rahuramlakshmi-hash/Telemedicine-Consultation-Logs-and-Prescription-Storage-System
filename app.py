@@ -1,6 +1,10 @@
 from flask import Flask, g, redirect, render_template, request
-import mysql.connector
+import logging
 import os
+import sqlite3
+
+import mysql.connector
+from mysql.connector import Error as MySQLError
 
 app = Flask(__name__)
 
@@ -10,6 +14,53 @@ TABLE_CANDIDATES = {
     "consultation": ["consultation", "Consultation"],
     "prescription": ["prescription", "Prescription"],
 }
+
+SQLITE_SCHEMA = [
+    """
+    CREATE TABLE IF NOT EXISTS patient (
+        patient_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        dob TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        email TEXT NOT NULL,
+        address TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS doctor (
+        doctor_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        specialization TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        email TEXT NOT NULL,
+        department TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS consultation (
+        consultation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_id INTEGER NOT NULL,
+        doctor_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        time TEXT NOT NULL,
+        symptoms TEXT NOT NULL,
+        diagnosis TEXT NOT NULL,
+        FOREIGN KEY (patient_id) REFERENCES patient(patient_id),
+        FOREIGN KEY (doctor_id) REFERENCES doctor(doctor_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS prescription (
+        prescription_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        consultation_id INTEGER NOT NULL,
+        medicine_name TEXT NOT NULL,
+        dosage TEXT NOT NULL,
+        duration TEXT NOT NULL,
+        notes TEXT NOT NULL,
+        FOREIGN KEY (consultation_id) REFERENCES consultation(consultation_id)
+    )
+    """,
+]
 
 
 def get_db_config():
@@ -23,15 +74,46 @@ def get_db_config():
     }
 
 
+def get_sqlite_path():
+    return os.environ.get("SQLITE_PATH", os.path.join(app.root_path, "telemedicine.db"))
+
+
+def init_sqlite_db(connection):
+    cursor = connection.cursor()
+    for statement in SQLITE_SCHEMA:
+        cursor.execute(statement)
+    connection.commit()
+    cursor.close()
+
+
 def get_db():
-    if "db" not in g:
-        config = get_db_config()
-        if not config["password"]:
-            raise RuntimeError(
-                "DB_PASSWORD is not set. Add your FreeDB password in Render environment variables."
-            )
-        g.db = mysql.connector.connect(**config)
+    if "db" in g:
+        return g.db
+
+    config = get_db_config()
+    password = config.get("password")
+
+    if password:
+        try:
+            g.db = mysql.connector.connect(**config)
+            g.db_backend = "mysql"
+            return g.db
+        except MySQLError as exc:
+            app.logger.warning("MySQL unavailable, falling back to SQLite: %s", exc)
+    else:
+        app.logger.warning("DB_PASSWORD is not set, falling back to SQLite.")
+
+    sqlite_path = get_sqlite_path()
+    g.db = sqlite3.connect(sqlite_path)
+    g.db.row_factory = None
+    g.db_backend = "sqlite"
+    init_sqlite_db(g.db)
     return g.db
+
+
+def get_backend():
+    get_db()
+    return g.db_backend
 
 
 def get_cursor():
@@ -40,10 +122,30 @@ def get_cursor():
     return g.cursor
 
 
+def adapt_query(query):
+    if get_backend() == "sqlite":
+        return query.replace("%s", "?")
+    return query
+
+
+def execute_query(query, params=()):
+    cursor = get_cursor()
+    cursor.execute(adapt_query(query), params)
+    return cursor
+
+
+def commit_db():
+    get_db().commit()
+
+
 def get_table_name(logical_name):
     cache = g.setdefault("table_name_cache", {})
     if logical_name in cache:
         return cache[logical_name]
+
+    if get_backend() == "sqlite":
+        cache[logical_name] = logical_name
+        return logical_name
 
     cursor = get_cursor()
     cursor.execute("SHOW TABLES")
@@ -70,18 +172,23 @@ def close_db(error):
         cursor.close()
 
     db = g.pop("db", None)
-    if db is not None and db.is_connected():
+    backend = g.pop("db_backend", None)
+    g.pop("table_name_cache", None)
+    if db is None:
+        return
+
+    if backend == "mysql" and db.is_connected():
+        db.close()
+    elif backend == "sqlite":
         db.close()
 
 
 def fetch_count(table_name):
-    cursor = get_cursor()
     resolved_table = get_table_name(table_name)
-    cursor.execute(f"SELECT COUNT(*) FROM `{resolved_table}`")
+    cursor = execute_query(f"SELECT COUNT(*) FROM `{resolved_table}`")
     return cursor.fetchone()[0]
 
 
-# ROUTES
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -105,22 +212,19 @@ def patient():
 
 @app.route("/patient_list")
 def patient_list():
-    cursor = get_cursor()
     patient_table = get_table_name("patient")
-    cursor.execute(
+    patients = execute_query(
         "SELECT patient_id, name, dob, phone, email, address "
         f"FROM `{patient_table}` ORDER BY patient_id DESC"
-    )
-    patients = cursor.fetchall()
+    ).fetchall()
     return render_template("patient_list.html", patients=patients)
 
 
 @app.route("/delete_patient/<int:patient_id>")
 def delete_patient(patient_id):
-    cursor = get_cursor()
     patient_table = get_table_name("patient")
-    cursor.execute(f"DELETE FROM `{patient_table}` WHERE patient_id = %s", (patient_id,))
-    get_db().commit()
+    execute_query(f"DELETE FROM `{patient_table}` WHERE patient_id = %s", (patient_id,))
+    commit_db()
     return redirect("/patient_list")
 
 
@@ -131,111 +235,105 @@ def doctor():
 
 @app.route("/doctor_list")
 def doctor_list():
-    cursor = get_cursor()
     doctor_table = get_table_name("doctor")
-    cursor.execute(
+    doctors = execute_query(
         "SELECT doctor_id, name, specialization, phone, email, department "
         f"FROM `{doctor_table}` ORDER BY doctor_id DESC"
-    )
-    doctors = cursor.fetchall()
+    ).fetchall()
     return render_template("doctor_list.html", doctors=doctors)
 
 
 @app.route("/delete_doctor/<int:doctor_id>")
 def delete_doctor(doctor_id):
-    cursor = get_cursor()
     doctor_table = get_table_name("doctor")
-    cursor.execute(f"DELETE FROM `{doctor_table}` WHERE doctor_id = %s", (doctor_id,))
-    get_db().commit()
+    execute_query(f"DELETE FROM `{doctor_table}` WHERE doctor_id = %s", (doctor_id,))
+    commit_db()
     return redirect("/doctor_list")
 
 
 @app.route("/consultation")
 def consultation():
-    cursor = get_cursor()
     patient_table = get_table_name("patient")
     doctor_table = get_table_name("doctor")
-    cursor.execute(f"SELECT patient_id, name FROM `{patient_table}` ORDER BY name")
-    patients = cursor.fetchall()
-    cursor.execute(f"SELECT doctor_id, name FROM `{doctor_table}` ORDER BY name")
-    doctors = cursor.fetchall()
+    patients = execute_query(
+        f"SELECT patient_id, name FROM `{patient_table}` ORDER BY name"
+    ).fetchall()
+    doctors = execute_query(
+        f"SELECT doctor_id, name FROM `{doctor_table}` ORDER BY name"
+    ).fetchall()
     return render_template("consultation.html", patients=patients, doctors=doctors)
 
 
 @app.route("/prescription")
 def prescription():
-    cursor = get_cursor()
     consultation_table = get_table_name("consultation")
     patient_table = get_table_name("patient")
     doctor_table = get_table_name("doctor")
-    cursor.execute(
+    consultations = execute_query(
         "SELECT c.consultation_id, p.name, d.name, c.date, c.time "
         f"FROM `{consultation_table}` c "
         f"JOIN `{patient_table}` p ON c.patient_id = p.patient_id "
         f"JOIN `{doctor_table}` d ON c.doctor_id = d.doctor_id "
         "ORDER BY c.consultation_id DESC"
-    )
-    consultations = cursor.fetchall()
+    ).fetchall()
     return render_template("prescription.html", consultations=consultations)
 
 
 @app.route("/save_consultation", methods=["POST"])
 def save_consultation():
-    patient_id = request.form["patient_id"]
-    doctor_id = request.form["doctor_id"]
-    date = request.form["date"]
-    time = request.form["time"]
-    symptoms = request.form["symptoms"]
-    diagnosis = request.form["diagnosis"]
-
-    cursor = get_cursor()
     consultation_table = get_table_name("consultation")
-    cursor.execute(
+    execute_query(
         f"INSERT INTO `{consultation_table}` "
         "(patient_id, doctor_id, date, time, symptoms, diagnosis) "
         "VALUES (%s, %s, %s, %s, %s, %s)",
-        (patient_id, doctor_id, date, time, symptoms, diagnosis),
+        (
+            request.form["patient_id"],
+            request.form["doctor_id"],
+            request.form["date"],
+            request.form["time"],
+            request.form["symptoms"],
+            request.form["diagnosis"],
+        ),
     )
-    get_db().commit()
+    commit_db()
     return redirect("/reports")
 
 
 @app.route("/save_prescription", methods=["POST"])
 def save_prescription():
-    consultation_id = request.form["consultation_id"]
-    medicine_name = request.form["medicine_name"]
-    dosage = request.form["dosage"]
-    duration = request.form["duration"]
-    notes = request.form["notes"]
-
-    cursor = get_cursor()
     prescription_table = get_table_name("prescription")
-    cursor.execute(
+    execute_query(
         f"INSERT INTO `{prescription_table}` "
         "(consultation_id, medicine_name, dosage, duration, notes) "
         "VALUES (%s, %s, %s, %s, %s)",
-        (consultation_id, medicine_name, dosage, duration, notes),
+        (
+            request.form["consultation_id"],
+            request.form["medicine_name"],
+            request.form["dosage"],
+            request.form["duration"],
+            request.form["notes"],
+        ),
     )
-    get_db().commit()
+    commit_db()
     return redirect("/reports")
 
 
 @app.route("/reports")
 def reports():
-    cursor = get_cursor()
     consultation_table = get_table_name("consultation")
     patient_table = get_table_name("patient")
     doctor_table = get_table_name("doctor")
     prescription_table = get_table_name("prescription")
-    cursor.execute(
+
+    consultations = execute_query(
         "SELECT c.consultation_id, p.name, d.name, c.date, c.time, c.symptoms, c.diagnosis "
         f"FROM `{consultation_table}` c "
         f"JOIN `{patient_table}` p ON c.patient_id = p.patient_id "
         f"JOIN `{doctor_table}` d ON c.doctor_id = d.doctor_id "
         "ORDER BY c.consultation_id DESC"
-    )
-    consultations = cursor.fetchall()
-    cursor.execute(
+    ).fetchall()
+
+    prescriptions = execute_query(
         "SELECT r.prescription_id, r.consultation_id, p.name, d.name, r.medicine_name, "
         "r.dosage, r.duration, r.notes "
         f"FROM `{prescription_table}` r "
@@ -243,8 +341,8 @@ def reports():
         f"JOIN `{patient_table}` p ON c.patient_id = p.patient_id "
         f"JOIN `{doctor_table}` d ON c.doctor_id = d.doctor_id "
         "ORDER BY r.prescription_id DESC"
-    )
-    prescriptions = cursor.fetchall()
+    ).fetchall()
+
     return render_template(
         "reports.html",
         consultations=consultations,
@@ -254,16 +352,14 @@ def reports():
 
 @app.route("/doctor_dashboard")
 def doctor_dashboard():
-    cursor = get_cursor()
     consultation_table = get_table_name("consultation")
     patient_table = get_table_name("patient")
-    cursor.execute(
+    consultations = execute_query(
         "SELECT c.consultation_id, p.name, c.date, c.time, c.diagnosis "
         f"FROM `{consultation_table}` c "
         f"JOIN `{patient_table}` p ON c.patient_id = p.patient_id "
         "ORDER BY c.consultation_id DESC"
-    )
-    consultations = cursor.fetchall()
+    ).fetchall()
     return render_template("doctor-dashboard.html", consultations=consultations)
 
 
@@ -314,41 +410,40 @@ def index_html():
 
 @app.route("/save_patient", methods=["POST"])
 def save_patient():
-    name = request.form["name"]
-    dob = request.form["dob"]
-    phone = request.form["phone"]
-    email = request.form["email"]
-    address = request.form["address"]
-
-    cursor = get_cursor()
     patient_table = get_table_name("patient")
-    cursor.execute(
+    execute_query(
         f"INSERT INTO `{patient_table}` (name, dob, phone, email, address) "
         "VALUES (%s, %s, %s, %s, %s)",
-        (name, dob, phone, email, address),
+        (
+            request.form["name"],
+            request.form["dob"],
+            request.form["phone"],
+            request.form["email"],
+            request.form["address"],
+        ),
     )
-    get_db().commit()
+    commit_db()
     return redirect("/admin")
 
 
 @app.route("/save_doctor", methods=["POST"])
 def save_doctor():
-    name = request.form["name"]
-    specialization = request.form["specialization"]
-    phone = request.form["phone"]
-    email = request.form["email"]
-    department = request.form["department"]
-
-    cursor = get_cursor()
     doctor_table = get_table_name("doctor")
-    cursor.execute(
+    execute_query(
         f"INSERT INTO `{doctor_table}` (name, specialization, phone, email, department) "
         "VALUES (%s, %s, %s, %s, %s)",
-        (name, specialization, phone, email, department),
+        (
+            request.form["name"],
+            request.form["specialization"],
+            request.form["phone"],
+            request.form["email"],
+            request.form["department"],
+        ),
     )
-    get_db().commit()
+    commit_db()
     return redirect("/admin")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
